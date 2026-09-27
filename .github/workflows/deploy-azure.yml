@@ -79,6 +79,8 @@ jobs:
         # secrets above are added; the bridge app deploy above is unaffected.
         run: |
           set -euo pipefail
+          # Surface the failing command as a run annotation (readable via API).
+          trap 'echo "::error::watcher deploy failed at: $BASH_COMMAND"' ERR
           if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
             echo "AWS Bedrock secrets not set - skipping watcher job deployment."
             exit 0
@@ -117,6 +119,7 @@ jobs:
                 --role "$1" --scope "$2" --query "[0].id" -o tsv)" ]; do
               attempt=$((attempt + 1))
               if [ "$attempt" -gt 18 ]; then
+                echo "::error::Timed out assigning role $1 on $2. Last error: $(cat /tmp/role_err.txt 2>/dev/null)"
                 echo "Timed out assigning role $1 on $2" >&2
                 exit 1
               fi
