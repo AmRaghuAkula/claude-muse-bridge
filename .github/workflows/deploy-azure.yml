@@ -2,11 +2,10 @@ name: deploy-azure
 
 # Builds the Docker image in Azure (no local Docker needed) and rolls it out
 # to the Container App. Authenticates with OIDC — no passwords stored in GitHub.
-# One-time GUI setup: repo Settings -> Secrets and variables -> Actions, add:
-#   secrets:  AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
-#   variables: AZURE_ACR_NAME, AZURE_RESOURCE_GROUP, AZURE_APP_NAME
-# Values come from the Deploy-to-Azure deployment outputs (except the
-# subscription ID, which is on the Azure subscription page).
+# One-time GUI setup: repo Settings -> Secrets and variables -> Actions, add
+# these repository secrets (values come from the Deploy-to-Azure outputs):
+#   AZURE_DEPLOYER_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
+#   AZURE_ACR_NAME, AZURE_RESOURCE_GROUP
 
 on:
   push:
@@ -30,23 +29,23 @@ jobs:
 
       - uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          client-id: ${{ secrets.AZURE_DEPLOYER_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
       - name: Build image in Azure
         run: |
           az acr build \
-            --registry ${{ vars.AZURE_ACR_NAME }} \
+            --registry ${{ secrets.AZURE_ACR_NAME }} \
             --image bridge:${{ github.sha }} \
             --image bridge:latest \
             .
 
       - name: Roll out to Container App
         run: |
-          LOGIN_SERVER=$(az acr show --name ${{ vars.AZURE_ACR_NAME }} \
+          LOGIN_SERVER=$(az acr show --name ${{ secrets.AZURE_ACR_NAME }} \
             --query loginServer -o tsv)
           az containerapp update \
-            --name ${{ vars.AZURE_APP_NAME }} \
-            --resource-group ${{ vars.AZURE_RESOURCE_GROUP }} \
+            --name claude-muse-bridge \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --image "$LOGIN_SERVER/bridge:${{ github.sha }}"
