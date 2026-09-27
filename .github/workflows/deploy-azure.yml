@@ -1,5 +1,7 @@
 name: deploy-azure
 
+# Deploys the bridge to Azure Container Apps on every push to main.
+
 # Builds the Docker image in Azure (no local Docker needed) and rolls it out
 # to the Container App. Authenticates with OIDC — no passwords stored in GitHub.
 # One-time GUI setup: repo Settings -> Secrets and variables -> Actions, add
