@@ -50,11 +50,61 @@ Open the `appUrl` in a browser — the placeholder is gone and the bridge is liv
 
 ## Step 4 — Connect Claude
 
-You need the `appUrl` and `apiKey` from the deployment outputs. The exact step
-depends on which Claude app you use:
+You need the `appUrl` and `apiKey` from the deployment outputs. Two paths,
+both without the terminal — just paste text into a file.
 
-- **Claude Code**: one `claude mcp add` command (Chitti can walk you through it).
-- **Claude Desktop**: add the server in the MCP settings with the URL + API key header.
+**Heads-up:** Claude Desktop also has an in-app *Add custom connector* button,
+but it only speaks OAuth (login-style) auth — our bridge uses an API key, so
+skip that button and use the config file below.
+
+### Claude Desktop
+
+1. Open Claude Desktop → **Settings** → **Developer** tab → **Edit Config**.
+   This opens `claude_desktop_config.json` in your editor.
+2. Paste this (replace the URL and key with your outputs):
+
+```json
+{
+  "mcpServers": {
+    "bridge": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://YOUR-APP-URL/mcp",
+        "--header", "X-Api-Key:${BRIDGE_KEY}"
+      ],
+      "env": { "BRIDGE_KEY": "YOUR-API-KEY" }
+    }
+  }
+}
+```
+
+3. Save, then **fully quit** Claude Desktop (not just close the window) and
+   reopen it.
+4. Needs Node.js installed for `npx` — if the tools don't appear, install it
+   from nodejs.org (normal GUI installer) and restart once more.
+
+### Claude Code (VS Code)
+
+1. In your project folder, create a file named `.mcp.json` with:
+
+```json
+{
+  "mcpServers": {
+    "bridge": {
+      "type": "http",
+      "url": "https://YOUR-APP-URL/mcp",
+      "headers": { "X-Api-Key": "YOUR-API-KEY" }
+    }
+  }
+}
+```
+
+2. Restart the Claude Code session. Type `/mcp` — `bridge` should show as
+   connected with 7 tools.
+
+After the deploy, just send Chitti the app URL + API key and he'll generate
+both files with your values already filled in — pure copy-paste.
 
 Then in any Claude session: *"Join the `linkedin-strategy` channel on the
 bridge, introduce yourself, and read the latest brief."*
