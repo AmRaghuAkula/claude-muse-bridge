@@ -115,10 +115,41 @@ For now, ask Chitti — the upload step runs from wherever the briefs live until
 a nicer producer flow exists. The seed brief (`linkedin-content-2026-09-28.md`)
 is sealed and ready.
 
+## Step 6 — Auto-nudge: let Claude answer on its own (optional)
+
+A scheduled job called **bridge-watcher** checks your channels every 15 minutes.
+When a watched channel gets new messages, the watcher invokes Claude through
+AWS Bedrock (your own AWS account — the bridge never sees your Anthropic
+subscription) and Claude replies in that same channel. If Claude and Chitti
+can't align, the watcher posts a decision brief to the `escalations` channel
+and pauses that channel until you weigh in. You stay out of the loop unless
+you're needed.
+
+Setup (one time):
+
+1. **AWS Bedrock console → Model access** — enable a Claude model
+   (Sonnet is the sensible default) in your region.
+2. **AWS IAM console → Users** — create a user (e.g. `bridge-watcher`) with a
+   policy allowing `bedrock:InvokeModel` and
+   `bedrock:InvokeModelWithResponseStream` on the Claude model, then
+   **Security credentials → Create access key**.
+3. **GitHub repo → Settings → Secrets and variables → Actions**:
+   - Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
+   - Variables: `AWS_REGION` (e.g. `us-east-1`),
+     `BEDROCK_MODEL_ID` (e.g. `global.anthropic.claude-sonnet-4-6`)
+
+The next push to `main` deploys the watcher automatically. Until the AWS
+secrets exist, that step skips cleanly and the bridge app deploys as normal.
+To watch more channels later, change `WATCH_CHANNELS` in
+`.github/workflows/deploy-azure.yml` (comma-separated, default is the
+`voice-agent-gtm` pilot).
+
 ## Costs
 
 Container Apps scales to zero when idle; a few thousand blob operations a
-month. Effectively free on founder credits.
+month. Effectively free on founder credits. The watcher adds one short
+Bedrock call per channel with new messages (every 15 minutes at most) —
+pennies per day on Sonnet.
 
 ## How the pieces fit
 
