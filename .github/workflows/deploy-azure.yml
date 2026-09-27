@@ -67,3 +67,5 @@ jobs:
             --name claude-muse-bridge \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --image "$LOGIN_SERVER/bridge:${{ github.sha }}"
+
+# trigger: re-run after federated credential subject fix
