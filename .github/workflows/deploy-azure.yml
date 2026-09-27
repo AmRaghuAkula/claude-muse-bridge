@@ -8,6 +8,11 @@ name: deploy-azure
 # these repository secrets (values come from the Deploy-to-Azure outputs):
 #   AZURE_DEPLOYER_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID,
 #   AZURE_ACR_NAME, AZURE_RESOURCE_GROUP
+# For the Claude watcher job, also add:
+#   secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (IAM user with
+#     bedrock:InvokeModel on the Claude model)
+#   variables: AWS_REGION (e.g. us-east-1),
+#     BEDROCK_MODEL_ID (e.g. global.anthropic.claude-sonnet-4-6)
 
 on:
   push:
@@ -67,5 +72,93 @@ jobs:
             --name claude-muse-bridge \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
             --image "$LOGIN_SERVER/bridge:${{ github.sha }}"
+
+      - name: Deploy watcher job
+        # Scheduled Container Apps Job that nudges Claude (via Bedrock) when
+        # watched channels get new messages. Skips cleanly until the AWS
+        # secrets above are added; the bridge app deploy above is unaffected.
+        run: |
+          set -euo pipefail
+          if [ -z "${{ secrets.AWS_ACCESS_KEY_ID }}" ] || [ -z "${{ secrets.AWS_SECRET_ACCESS_KEY }}" ]; then
+            echo "AWS Bedrock secrets not set - skipping watcher job deployment."
+            exit 0
+          fi
+          RG="${{ secrets.AZURE_RESOURCE_GROUP }}"
+          ACR="${{ secrets.AZURE_ACR_NAME }}"
+          LOGIN_SERVER=$(az acr show --name "$ACR" --query loginServer -o tsv)
+          IMAGE="$LOGIN_SERVER/bridge:${{ github.sha }}"
+          ENV_ID=$(az containerapp env show --name cae-bridge \
+            --resource-group "$RG" --query id -o tsv)
+          STORAGE=$(az storage account list --resource-group "$RG" \
+            --query "[?starts_with(name,'stbridge')].name | [0]" -o tsv)
+          LOCATION=$(az group show --name "$RG" --query location -o tsv)
+
+          # Watcher managed identity (idempotent) + least-privilege roles.
+          IDENTITY_ID=$(az identity create --name id-bridge-watcher \
+            --resource-group "$RG" --location "$LOCATION" --query id -o tsv)
+          PRINCIPAL=$(az identity show --ids "$IDENTITY_ID" \
+            --query principalId -o tsv)
+          STORAGE_ID=$(az storage account show --name "$STORAGE" \
+            --resource-group "$RG" --query id -o tsv)
+          ACR_ID=$(az acr show --name "$ACR" \
+            --resource-group "$RG" --query id -o tsv)
+          ensure_role() { # $1 = role definition id, $2 = scope
+            if [ -z "$(az role assignment list --assignee "$PRINCIPAL" \
+                --role "$1" --scope "$2" --query "[0].id" -o tsv)" ]; then
+              az role assignment create --assignee-object-id "$PRINCIPAL" \
+                --assignee-principal-type ServicePrincipal \
+                --role "$1" --scope "$2" -o none
+            fi
+          }
+          # Storage Blob Data Contributor, AcrPull
+          ensure_role ba92f5b4-2d11-453d-a403-e96b0029c9fe "$STORAGE_ID"
+          ensure_role 7f951dda-4ed3-4680-a7ca-43fe172d538d "$ACR_ID"
+
+          AWS_REGION="${{ vars.AWS_REGION }}"
+          AWS_REGION="${AWS_REGION:-us-east-1}"
+          BEDROCK_MODEL="${{ vars.BEDROCK_MODEL_ID }}"
+          BEDROCK_MODEL="${BEDROCK_MODEL:-global.anthropic.claude-sonnet-4-6}"
+
+          ENV_VARS="BRIDGE_BACKEND=azure"
+          ENV_VARS="$ENV_VARS BRIDGE_STORAGE_ACCOUNT=$STORAGE"
+          ENV_VARS="$ENV_VARS BRIDGE_CHANNELS_CONTAINER=channels"
+          ENV_VARS="$ENV_VARS BRIDGE_CONTAINER=briefs"
+          ENV_VARS="$ENV_VARS WATCH_CHANNELS=voice-agent-gtm"
+          ENV_VARS="$ENV_VARS WATCH_STATE_CONTAINER=watcher-state"
+          ENV_VARS="$ENV_VARS AWS_REGION=$AWS_REGION"
+          ENV_VARS="$ENV_VARS BEDROCK_MODEL_ID=$BEDROCK_MODEL"
+          ENV_VARS="$ENV_VARS AWS_ACCESS_KEY_ID=secretref:aws-access-key-id"
+          ENV_VARS="$ENV_VARS AWS_SECRET_ACCESS_KEY=secretref:aws-secret-access-key"
+          # shellcheck disable=SC2086
+          if az containerapp job show --name bridge-watcher \
+              --resource-group "$RG" >/dev/null 2>&1; then
+            echo "Updating existing bridge-watcher job..."
+            az containerapp job update --name bridge-watcher \
+              --resource-group "$RG" \
+              --image "$IMAGE" \
+              --set-env-vars $ENV_VARS \
+              --set-secrets \
+                "aws-access-key-id=${{ secrets.AWS_ACCESS_KEY_ID }}" \
+                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          else
+            echo "Creating bridge-watcher job..."
+            az containerapp job create --name bridge-watcher \
+              --resource-group "$RG" \
+              --environment "$ENV_ID" \
+              --trigger-type Schedule \
+              --cron-expression "*/15 * * * *" \
+              --replica-timeout 600 \
+              --image "$IMAGE" \
+              --cpu 0.5 --memory 1Gi \
+              --command python --args "-m" "bridge.watcher" \
+              --registry-server "$LOGIN_SERVER" \
+              --registry-identity "$IDENTITY_ID" \
+              --mi-user-assigned "$IDENTITY_ID" \
+              --env-vars $ENV_VARS \
+              --secrets \
+                "aws-access-key-id=${{ secrets.AWS_ACCESS_KEY_ID }}" \
+                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+          fi
+          echo "Watcher job deployed."
 
 # trigger: re-run after federated credential subject fix
