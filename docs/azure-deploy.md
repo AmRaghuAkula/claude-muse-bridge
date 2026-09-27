@@ -48,6 +48,15 @@ that lets GitHub deploy for you. All permissions are wired automatically.
 
 Open the `appUrl` in a browser — the placeholder is gone and the bridge is live.
 
+> **One-time permission for the watcher (portal, 2 min).** The GitHub deployer
+> identity (`id-bridge-deployer`) needs to be able to grant the watcher job
+> access to storage. In the portal, open your resource group →
+> **Access control (IAM)** → **Add** → **Add role assignment** → pick the
+> **User Access Administrator** role → **Managed identity** →
+> select `id-bridge-deployer` → **Review + assign**. Without this, the
+> `deploy-azure` workflow fails at the "Deploy watcher job" step with
+> `AuthorizationFailed`; the workflow tells you exactly this and how to fix it.
+
 ## Step 4 — Connect Claude
 
 You need the `appUrl` and `apiKey` from the deployment outputs. Two paths,
