@@ -171,16 +171,23 @@ jobs:
           if az containerapp job show --name bridge-watcher \
               --resource-group "$RG" >/dev/null 2>&1; then
             echo "Updating existing bridge-watcher job..."
-            az containerapp job update --name bridge-watcher \
+            if ! az containerapp job update --name bridge-watcher \
               --resource-group "$RG" \
               --image "$IMAGE" \
               --set-env-vars $ENV_VARS \
               --set-secrets \
                 "aws-access-key-id=${{ secrets.AWS_ACCESS_KEY_ID }}" \
-                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+              2>/tmp/job_err.txt; then
+              echo "::error::bridge-watcher job update failed: $(cat /tmp/job_err.txt)"
+              exit 1
+            fi
           else
             echo "Creating bridge-watcher job..."
-            az containerapp job create --name bridge-watcher \
+            # NOTE: --args="-m" uses the attached form so the CLI parser takes
+            # the dash-prefixed value literally (a bare "-m" is rejected as a
+            # usage error, exit code 2).
+            if ! az containerapp job create --name bridge-watcher \
               --resource-group "$RG" \
               --environment "$ENV_ID" \
               --trigger-type Schedule \
@@ -188,14 +195,18 @@ jobs:
               --replica-timeout 600 \
               --image "$IMAGE" \
               --cpu 0.5 --memory 1Gi \
-              --command python --args "-m" "bridge.watcher" \
+              --command=python --args="-m" "bridge.watcher" \
               --registry-server "$LOGIN_SERVER" \
               --registry-identity "$IDENTITY_ID" \
               --mi-user-assigned "$IDENTITY_ID" \
               --env-vars $ENV_VARS \
               --secrets \
                 "aws-access-key-id=${{ secrets.AWS_ACCESS_KEY_ID }}" \
-                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
+              2>/tmp/job_err.txt; then
+              echo "::error::bridge-watcher job create failed: $(cat /tmp/job_err.txt)"
+              exit 1
+            fi
           fi
           echo "Watcher job deployed."
 
