@@ -13,4 +13,6 @@ ENV BRIDGE_TRANSPORT=http \
     BRIDGE_PORT=8000
 
 EXPOSE 8000
-CMD ["python", "-m", "bridge.server"]
+# Entrypoint dispatcher (src/bridge/__main__.py): runs the server by default,
+# or the watcher job when BRIDGE_MODE=watcher.
+CMD ["python", "-m", "bridge"]

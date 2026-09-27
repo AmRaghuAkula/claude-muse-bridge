@@ -158,6 +158,7 @@ jobs:
           BEDROCK_MODEL="${BEDROCK_MODEL:-global.anthropic.claude-sonnet-4-6}"
 
           ENV_VARS="BRIDGE_BACKEND=azure"
+          ENV_VARS="$ENV_VARS BRIDGE_MODE=watcher"
           ENV_VARS="$ENV_VARS BRIDGE_STORAGE_ACCOUNT=$STORAGE"
           ENV_VARS="$ENV_VARS BRIDGE_CHANNELS_CONTAINER=channels"
           ENV_VARS="$ENV_VARS BRIDGE_CONTAINER=briefs"
@@ -184,9 +185,9 @@ jobs:
             fi
           else
             echo "Creating bridge-watcher job..."
-            # NOTE: --args="-m" uses the attached form so the CLI parser takes
-            # the dash-prefixed value literally (a bare "-m" is rejected as a
-            # usage error, exit code 2).
+            # The image entrypoint (src/bridge/__main__.py) picks server vs
+            # watcher from BRIDGE_MODE, so no --command/--args override is
+            # needed (az only accepts a single --args value anyway).
             if ! az containerapp job create --name bridge-watcher \
               --resource-group "$RG" \
               --environment "$ENV_ID" \
@@ -195,7 +196,6 @@ jobs:
               --replica-timeout 600 \
               --image "$IMAGE" \
               --cpu 0.5 --memory 1Gi \
-              --command=python --args="-m" "bridge.watcher" \
               --registry-server "$LOGIN_SERVER" \
               --registry-identity "$IDENTITY_ID" \
               --mi-user-assigned "$IDENTITY_ID" \
