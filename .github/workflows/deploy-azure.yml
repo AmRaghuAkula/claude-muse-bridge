@@ -112,7 +112,10 @@ jobs:
             && [ -n "$STORAGE_ID" ] && [ -n "$ACR_ID" ] \
             || { echo "Failed to resolve Azure resource IDs" >&2; exit 1; }
           # Role assignments can race Azure AD replication right after the
-          # identity is created, so retry for up to ~3 minutes.
+          # identity is created, so retry for a bit. But a hard
+          # AuthorizationFailed means the deployer identity was never granted
+          # permission to assign roles at all — retrying won't help, so fail
+          # fast with the exact one-time portal fix.
           ensure_role() { # $1 = role definition id, $2 = scope
             local attempt=0
             while [ -z "$(az role assignment list --assignee "$PRINCIPAL" \
@@ -128,6 +131,12 @@ jobs:
                   --role "$1" --scope "$2" -o none 2>/tmp/role_err.txt; then
                 echo "Role $1 assigned on $2"
                 break
+              fi
+              if grep -q "AuthorizationFailed" /tmp/role_err.txt 2>/dev/null; then
+                echo "::error::Deployer identity 'id-bridge-deployer' cannot grant roles. One-time portal fix: open resource group $RG -> Access control (IAM) -> Add -> Add role assignment -> role 'User Access Administrator' -> assign to managed identity 'id-bridge-deployer' -> Review + assign. Then re-run this workflow."
+                echo "Deployer identity lacks Microsoft.Authorization/roleAssignments/write." >&2
+                echo "Portal fix: resource group $RG -> Access control (IAM) -> Add role assignment -> 'User Access Administrator' -> managed identity 'id-bridge-deployer'. Then re-run the workflow." >&2
+                exit 1
               fi
               echo "Role assignment not ready (attempt $attempt/18), retrying in 10s..." >&2
               sleep 10
