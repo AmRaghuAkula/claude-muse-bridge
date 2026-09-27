@@ -92,8 +92,12 @@ jobs:
           STORAGE=$(az storage account list --resource-group "$RG" \
             --query "[?starts_with(name,'stbridge')].name | [0]" -o tsv)
           LOCATION=$(az group show --name "$RG" --query location -o tsv)
+          [ -n "$ENV_ID" ] && [ -n "$STORAGE" ] \
+            || { echo "Could not find container env or storage account" >&2; exit 1; }
+          echo "Env: $ENV_ID | Storage: $STORAGE | Image: $IMAGE"
 
           # Watcher managed identity (idempotent) + least-privilege roles.
+          echo "Creating watcher identity..."
           IDENTITY_ID=$(az identity create --name id-bridge-watcher \
             --resource-group "$RG" --location "$LOCATION" --query id -o tsv)
           PRINCIPAL=$(az identity show --ids "$IDENTITY_ID" \
@@ -102,13 +106,29 @@ jobs:
             --resource-group "$RG" --query id -o tsv)
           ACR_ID=$(az acr show --name "$ACR" \
             --resource-group "$RG" --query id -o tsv)
+          [ -n "$IDENTITY_ID" ] && [ -n "$PRINCIPAL" ] \
+            && [ -n "$STORAGE_ID" ] && [ -n "$ACR_ID" ] \
+            || { echo "Failed to resolve Azure resource IDs" >&2; exit 1; }
+          # Role assignments can race Azure AD replication right after the
+          # identity is created, so retry for up to ~3 minutes.
           ensure_role() { # $1 = role definition id, $2 = scope
-            if [ -z "$(az role assignment list --assignee "$PRINCIPAL" \
-                --role "$1" --scope "$2" --query "[0].id" -o tsv)" ]; then
-              az role assignment create --assignee-object-id "$PRINCIPAL" \
-                --assignee-principal-type ServicePrincipal \
-                --role "$1" --scope "$2" -o none
-            fi
+            local attempt=0
+            while [ -z "$(az role assignment list --assignee "$PRINCIPAL" \
+                --role "$1" --scope "$2" --query "[0].id" -o tsv)" ]; do
+              attempt=$((attempt + 1))
+              if [ "$attempt" -gt 18 ]; then
+                echo "Timed out assigning role $1 on $2" >&2
+                exit 1
+              fi
+              if az role assignment create --assignee-object-id "$PRINCIPAL" \
+                  --assignee-principal-type ServicePrincipal \
+                  --role "$1" --scope "$2" -o none 2>/tmp/role_err.txt; then
+                echo "Role $1 assigned on $2"
+                break
+              fi
+              echo "Role assignment not ready (attempt $attempt/18), retrying in 10s..." >&2
+              sleep 10
+            done
           }
           # Storage Blob Data Contributor, AcrPull
           ensure_role ba92f5b4-2d11-453d-a403-e96b0029c9fe "$STORAGE_ID"
