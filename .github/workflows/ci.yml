@@ -11,33 +11,6 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install ".[azure]"
+      - run: pip install pytest
       - run: python -m compileall -q src
-      - name: smoke test (local backend + server wiring)
-        run: |
-          python - <<'EOF'
-          import asyncio, tempfile
-          from pathlib import Path
-
-          from bridge.config import Settings
-          from bridge.backends.local import LocalBackend
-          from bridge.server import create_server
-
-          d = Path(tempfile.mkdtemp())
-          (d / "2026-09-01.md").write_text("# First")
-          (d / "2026-09-15.md").write_text("# Second")
-
-          backend = LocalBackend(d)
-          assert backend.list_briefs() == ["2026-09-01.md", "2026-09-15.md"]
-          assert backend.read_latest() == ("2026-09-15.md", "# Second")
-
-          settings = Settings(backend="local", transport="stdio", briefs_dir=d)
-          settings.validate()
-          server = create_server(settings)
-          tools = asyncio.run(server.list_tools())
-          names = sorted(t.name for t in tools)
-          assert names == ["get_brief", "get_latest_brief", "list_briefs"], names
-
-          res = asyncio.run(server.call_tool("get_latest_brief", {}))
-          assert "# Second" in res.content[0].text
-          print("smoke ok:", names)
-          EOF
+      - run: python -m pytest tests/ -q

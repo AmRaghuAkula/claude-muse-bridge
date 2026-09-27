@@ -28,3 +28,11 @@ class BriefBackend(ABC):
         if not names:
             raise FileNotFoundError("no briefs found")
         return names[-1], self.read_brief(names[-1])
+
+    def verify_brief(self, name: str) -> str:
+        """Human-readable integrity status for one brief.
+
+        One of: "OK: ...", "SKIPPED: ..." (no sidecar), "FAILED: ...",
+        "NOT FOUND: ...".
+        """
+        return "SKIPPED: integrity checks not supported by this backend"

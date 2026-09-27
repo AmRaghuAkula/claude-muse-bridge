@@ -16,6 +16,7 @@ CLI flags override env vars: --transport, --backend, --briefs-dir, --port.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 
@@ -25,13 +26,18 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from bridge.backends import get_backend
+from bridge.channels import ChannelStore
 from bridge.config import Settings, load_settings
+from bridge.integrity import IntegrityError
 
 SERVER_INSTRUCTIONS = (
     "A bridge to documents ('briefs') produced by another AI assistant. "
     "Use list_briefs to see what is available, get_latest_brief for the newest "
     "brief, or get_brief for a specific one by name. Briefs are markdown reports "
-    "with data and recommendations — ground your answers in them."
+    "with data and recommendations — ground your answers in them. "
+    "Use verify_brief to check a brief against its SHA-256 sidecar. "
+    "Channels are bidirectional mailboxes shared with the other assistant: "
+    "use list_channels, read_messages, and send_message to converse."
 )
 
 
@@ -50,6 +56,7 @@ class _ApiKeyMiddleware(BaseHTTPMiddleware):
 
 def create_server(settings: Settings) -> MCPServer:
     backend = get_backend(settings)
+    channels = ChannelStore(settings.channels_dir)
     server = MCPServer("claude-muse-bridge", instructions=SERVER_INSTRUCTIONS)
 
     @server.tool()
@@ -65,6 +72,8 @@ def create_server(settings: Settings) -> MCPServer:
         """Return the newest brief (markdown): data, findings, recommendations."""
         try:
             name, content = backend.read_latest()
+        except IntegrityError as exc:
+            return f"INTEGRITY CHECK FAILED: {exc} Refusing to serve this brief."
         except FileNotFoundError:
             return "No briefs found. Ask the producer to publish one first."
         return f"# {name}\n\n{content}"
@@ -74,8 +83,45 @@ def create_server(settings: Settings) -> MCPServer:
         """Return one brief by name (see list_briefs)."""
         try:
             return backend.read_brief(name)
+        except IntegrityError as exc:
+            return f"INTEGRITY CHECK FAILED: {exc} Refusing to serve this brief."
         except FileNotFoundError:
             return f"Brief not found: {name}"
+
+    @server.tool()
+    def verify_brief(name: str) -> str:
+        """Check a brief against its SHA-256 sidecar.
+
+        Returns OK (matches), SKIPPED (unsealed brief, no sidecar),
+        FAILED (tampered), or NOT FOUND.
+        """
+        return backend.verify_brief(name)
+
+    @server.tool()
+    def list_channels() -> list[str]:
+        """List bidirectional message channels shared with the other assistant."""
+        names = channels.list_channels()
+        if not names:
+            return ["No channels yet. Use send_message to start one."]
+        return names
+
+    @server.tool()
+    def read_messages(channel: str, after_id: str = "", limit: int = 50) -> str:
+        """Read messages from a channel (JSON). Use after_id to fetch only newer ones."""
+        try:
+            msgs = channels.read_messages(channel, after_id=after_id, limit=limit)
+        except ValueError as exc:
+            return f"error: {exc}"
+        return json.dumps(msgs, ensure_ascii=False, indent=2)
+
+    @server.tool()
+    def send_message(channel: str, author: str, text: str) -> str:
+        """Post a message to a channel (JSON receipt). Channel names: a-z 0-9 _ -."""
+        try:
+            msg = channels.send_message(channel, author=author, text=text)
+        except ValueError as exc:
+            return f"error: {exc}"
+        return json.dumps({"ok": True, "id": msg["id"], "ts": msg["ts"]})
 
     return server
 

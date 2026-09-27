@@ -14,11 +14,46 @@ same code runs on a laptop (stdio + local folder) or on Azure (HTTP + Blob Stora
 | `list_briefs` | Lists available briefs, oldest first |
 | `get_latest_brief` | Returns the newest brief (markdown) |
 | `get_brief` | Returns one brief by name |
+| `verify_brief` | Checks a brief against its SHA-256 sidecar (`OK` / `SKIPPED` / `FAILED` / `NOT FOUND`) |
+| `list_channels` | Lists bidirectional message channels |
+| `read_messages` | Reads messages from a channel (JSON; `after_id` for new ones only) |
+| `send_message` | Posts a message to a channel |
+
+## Integrity: hash-sealed briefs
+
+A sealed brief `brief.md` has a sibling `brief.md.sha256`. When a sidecar is
+present, the server verifies content on every read and **refuses to serve**
+tampered briefs instead of letting them flow into Claude's context.
+`verify_brief` reports the status explicitly.
+
+```bash
+# seal all briefs after writing them (producer side)
+python -m bridge.cli seal
+```
+
+Unsealed briefs keep working as before — sealing is opt-in per file.
+
+## Bidirectional channels
+
+Channels are named mailboxes shared between a Muse chat and a Claude session
+(or any two parties). Pair a chat with a session by agreeing on a channel name,
+then both sides converse through `send_message` / `read_messages`.
+
+```bash
+# operator CLI (Muse side)
+python -m bridge.cli channels
+python -m bridge.cli send -c content-strategy -a chitti "fresh brief is up"
+python -m bridge.cli read -c content-strategy
+```
+
+Server-enforced ceilings (v1): channel names limited to `a-z 0-9 _ -`
+(also blocks path traversal), authors ≤ 64 chars, messages ≤ 4000 chars,
+reads ≤ 200 messages per call.
 
 ## Quickstart — local (5 minutes)
 
 ```bash
-git clone https://github.com/<you>/claude-muse-bridge.git
+git clone https://github.com/AmRaghuAkula/claude-muse-bridge.git
 cd claude-muse-bridge
 pip install "."
 
@@ -54,6 +89,7 @@ CLI flags (`--transport`, `--backend`, `--briefs-dir`, `--port`) override env va
 | `BRIDGE_API_KEY` | — | **Required** for `http` transport; sent as `X-Api-Key` header |
 | `BRIDGE_HOST` | `127.0.0.1` | HTTP bind host |
 | `BRIDGE_PORT` | `8000` | HTTP port |
+| `BRIDGE_CHANNELS_DIR` | `~/bridge-channels` | Folder holding channel message files |
 
 ## Hosted on Azure (always-on)
 
@@ -110,6 +146,9 @@ Nobody ferries files by hand.
 
 - The `http` transport requires `BRIDGE_API_KEY`; without it the server refuses to start.
 - Scope SAS tokens to the briefs container only (create/write/list, no delete).
+- Sealed briefs are verified on every read; tampered content is refused, not served.
+- Channel guardrails live in the server, not in prompts: name allowlist,
+  author/message length caps, read limits.
 - Never commit `.env` or secrets — `.gitignore` already excludes them.
 
 ## License
