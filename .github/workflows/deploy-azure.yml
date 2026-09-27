@@ -27,6 +27,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check required secrets
+        run: |
+          missing=""
+          [ -z "${{ secrets.AZURE_DEPLOYER_CLIENT_ID }}" ] && missing="$missing AZURE_DEPLOYER_CLIENT_ID"
+          [ -z "${{ secrets.AZURE_TENANT_ID }}" ] && missing="$missing AZURE_TENANT_ID"
+          [ -z "${{ secrets.AZURE_SUBSCRIPTION_ID }}" ] && missing="$missing AZURE_SUBSCRIPTION_ID"
+          [ -z "${{ secrets.AZURE_ACR_NAME }}" ] && missing="$missing AZURE_ACR_NAME"
+          [ -z "${{ secrets.AZURE_RESOURCE_GROUP }}" ] && missing="$missing AZURE_RESOURCE_GROUP"
+          if [ -n "$missing" ]; then
+            echo "These repository secrets are missing or empty:$missing"
+            echo "Add them under repo Settings -> Secrets and variables -> Actions -> Repository secrets,"
+            echo "using the exact names above, then re-run this workflow."
+            exit 1
+          fi
+          echo "All required secrets present."
+
       - uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_DEPLOYER_CLIENT_ID }}

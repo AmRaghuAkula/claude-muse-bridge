@@ -55,7 +55,10 @@ def test_managed_identity_path(monkeypatch):
 
 
 def test_missing_identity_package_errors(monkeypatch):
+    # Simulate azure-identity not being installed: None in sys.modules makes
+    # the import raise ImportError even when the package exists on disk.
     _stub(monkeypatch, use_identity=False)
+    monkeypatch.setitem(sys.modules, "azure.identity", None)
     try:
         make_container_client("acct", "briefs", "")
     except RuntimeError as exc:
