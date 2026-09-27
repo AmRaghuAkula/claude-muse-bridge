@@ -48,14 +48,19 @@ that lets GitHub deploy for you. All permissions are wired automatically.
 
 Open the `appUrl` in a browser — the placeholder is gone and the bridge is live.
 
-> **One-time permission for the watcher (portal, 2 min).** The GitHub deployer
-> identity (`id-bridge-deployer`) needs to be able to grant the watcher job
-> access to storage. In the portal, open your resource group →
-> **Access control (IAM)** → **Add** → **Add role assignment** → pick the
-> **User Access Administrator** role → **Managed identity** →
-> select `id-bridge-deployer` → **Review + assign**. Without this, the
-> `deploy-azure` workflow fails at the "Deploy watcher job" step with
-> `AuthorizationFailed`; the workflow tells you exactly this and how to fix it.
+> **One-time permission for the watcher (portal, 5 min).** The GitHub deployer
+> identity can't grant roles, so give the watcher's own identity its two roles
+> directly (narrow, no privileged roles involved):
+> 1. Open the **storage account** (name starts with `stbridge`) →
+>    **Access control (IAM)** → **Add** → **Add role assignment** →
+>    role **Storage Blob Data Contributor** → **Managed identity** →
+>    select `id-bridge-watcher` → **Review + assign**.
+> 2. Open the **container registry** (name starts with `acrbridge`) →
+>    **Access control (IAM)** → **Add** → **Add role assignment** →
+>    role **AcrPull** → **Managed identity** →
+>    select `id-bridge-watcher` → **Review + assign**.
+> The `deploy-azure` workflow warns (not fails) if it can't grant these itself;
+> the watcher works as long as the portal grants above are in place.
 
 ## Step 4 — Connect Claude
 

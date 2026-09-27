@@ -133,10 +133,16 @@ jobs:
                 break
               fi
               if grep -q "AuthorizationFailed" /tmp/role_err.txt 2>/dev/null; then
-                echo "::error::Deployer identity 'id-bridge-deployer' cannot grant roles. One-time portal fix: open resource group $RG -> Access control (IAM) -> Add -> Add role assignment -> role 'User Access Administrator' -> assign to managed identity 'id-bridge-deployer' -> Review + assign. Then re-run this workflow."
-                echo "Deployer identity lacks Microsoft.Authorization/roleAssignments/write." >&2
-                echo "Portal fix: resource group $RG -> Access control (IAM) -> Add role assignment -> 'User Access Administrator' -> managed identity 'id-bridge-deployer'. Then re-run the workflow." >&2
-                exit 1
+                # The deployer identity can't grant roles (it lacks
+                # Microsoft.Authorization/roleAssignments/write), and the
+                # portal requires a delegation condition for privileged roles,
+                # so the roles are granted once via the portal instead (see
+                # docs/azure-deploy.md "One-time permission for the watcher").
+                # Warn and continue so the job itself still deploys; the
+                # watcher works as long as the portal grants are in place.
+                echo "::warning::Deployer identity 'id-bridge-deployer' cannot grant role $1 on $2 (AuthorizationFailed). Continuing — grant it via the portal if not already done (docs/azure-deploy.md)."
+                echo "WARNING: cannot grant role $1 on $2; continuing. If the watcher later fails with an authorization error, grant the role via the portal." >&2
+                break
               fi
               echo "Role assignment not ready (attempt $attempt/18), retrying in 10s..." >&2
               sleep 10
