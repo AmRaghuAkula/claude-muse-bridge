@@ -194,6 +194,7 @@ jobs:
               --trigger-type Schedule \
               --cron-expression "*/15 * * * *" \
               --replica-timeout 600 \
+              --replica-retry-limit 1 \
               --image "$IMAGE" \
               --cpu 0.5 --memory 1Gi \
               --registry-server "$LOGIN_SERVER" \
