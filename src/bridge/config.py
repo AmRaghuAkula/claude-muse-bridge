@@ -37,9 +37,10 @@ class Settings:
     api_key: str = ""               # http transport
     host: str = "127.0.0.1"         # http transport
     port: int = 8000                # http transport
-    channels_dir: Path = field(     # message channels (bidirectional chat)
+    channels_dir: Path = field(     # message channels (local backend)
         default_factory=lambda: Path.home() / "bridge-channels"
     )
+    channels_container: str = "channels"  # message channels (azure backend)
 
     def validate(self) -> None:
         if self.backend not in ("local", "azure"):
@@ -68,4 +69,5 @@ def load_settings() -> Settings:
         host=os.environ.get("BRIDGE_HOST", "127.0.0.1").strip(),
         port=int(os.environ.get("BRIDGE_PORT", "8000")),
         channels_dir=Path(os.environ.get("BRIDGE_CHANNELS_DIR", "~/bridge-channels")).expanduser(),
+        channels_container=os.environ.get("BRIDGE_CHANNELS_CONTAINER", "channels").strip(),
     )

@@ -26,7 +26,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 from bridge.backends import get_backend
-from bridge.channels import ChannelStore
+from bridge.channels import get_channel_store
 from bridge.config import Settings, load_settings
 from bridge.integrity import IntegrityError
 
@@ -56,7 +56,7 @@ class _ApiKeyMiddleware(BaseHTTPMiddleware):
 
 def create_server(settings: Settings) -> MCPServer:
     backend = get_backend(settings)
-    channels = ChannelStore(settings.channels_dir)
+    channels = get_channel_store(settings)
     server = MCPServer("claude-muse-bridge", instructions=SERVER_INSTRUCTIONS)
 
     @server.tool()

@@ -39,6 +39,10 @@ Channels are named mailboxes shared between a Muse chat and a Claude session
 (or any two parties). Pair a chat with a session by agreeing on a channel name,
 then both sides converse through `send_message` / `read_messages`.
 
+Storage follows `BRIDGE_BACKEND`: local JSONL files, or one Azure append blob
+per channel (`<name>.jsonl`) in the channels container. Append blobs mean every
+send is a single atomic append — concurrent writers can't clobber each other.
+
 ```bash
 # operator CLI (Muse side)
 python -m bridge.cli channels
@@ -89,7 +93,8 @@ CLI flags (`--transport`, `--backend`, `--briefs-dir`, `--port`) override env va
 | `BRIDGE_API_KEY` | — | **Required** for `http` transport; sent as `X-Api-Key` header |
 | `BRIDGE_HOST` | `127.0.0.1` | HTTP bind host |
 | `BRIDGE_PORT` | `8000` | HTTP port |
-| `BRIDGE_CHANNELS_DIR` | `~/bridge-channels` | Folder holding channel message files |
+| `BRIDGE_CHANNELS_DIR` | `~/bridge-channels` | Folder holding channel message files (local backend) |
+| `BRIDGE_CHANNELS_CONTAINER` | `channels` | Blob container for channels (azure backend) |
 
 ## Hosted on Azure (always-on)
 
