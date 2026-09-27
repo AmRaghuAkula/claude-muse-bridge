@@ -2,23 +2,17 @@
 
 from __future__ import annotations
 
+from bridge.azure_auth import make_container_client
 from bridge.integrity import IntegrityError, sha256_text
 
 from .base import BriefBackend
 
 
 class AzureBlobBackend(BriefBackend):
-    def __init__(self, storage_account: str, container: str, sas_token: str) -> None:
-        try:
-            from azure.storage.blob import ContainerClient
-        except ImportError as exc:
-            raise RuntimeError(
-                "azure-storage-blob is not installed. Install with: pip install 'claude-muse-bridge[azure]'"
-            ) from exc
-        sas = sas_token[1:] if sas_token.startswith("?") else sas_token
-        self._client = ContainerClient.from_container_url(
-            f"https://{storage_account}.blob.core.windows.net/{container}?{sas}"
-        )
+    def __init__(
+        self, storage_account: str, container: str, sas_token: str = ""
+    ) -> None:
+        self._client = make_container_client(storage_account, container, sas_token)
 
     def _blobs(self) -> list:
         blobs = [b for b in self._client.list_blobs() if b.name.endswith(".md")]

@@ -1,142 +1,88 @@
-# Deploying the bridge on Azure
+# Deploying the bridge on Azure — no terminal needed
 
-The whole thing runs on Azure: **Container Apps** hosts the MCP server (HTTP
-transport, API-key auth), **Blob Storage** holds the `briefs` and `channels`
-containers. At this volume (a few calls per session) Container Apps scales to
-zero when idle — pennies, well inside founder credits.
+Everything runs on Azure: **Container Apps** hosts the bridge, **Blob Storage**
+holds the briefs and channels. The whole setup is two rounds of clicking —
+about 15 minutes, no command line anywhere.
 
-All commands run from the repo root. Region: `canadacentral`.
-
-## 1. Log in and pick the credits subscription
-
-```bash
-az login
-az account list -o table
-az account set --subscription "<subscription with your credits>"
+```
+You click "Deploy to Azure" ──> portal creates everything ──> you paste
+6 values into GitHub ──> GitHub builds & ships the app automatically
 ```
 
-## 2. Resource group + storage
+## Step 1 — One-click deploy (5 min)
 
-```bash
-az group create -n rg-bridge -l canadacentral
+Click the **Deploy to Azure** button in the README (or below):
 
-# storage account name must be globally unique, lowercase, 3-24 chars
-az storage account create -n stbridge<unique> -g rg-bridge -l canadacentral \
-  --sku Standard_LRS --kind StorageV2
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAmRaghuAkula%2Fclaude-muse-bridge%2Fmain%2Fazuredeploy.json)
 
-az storage container create -n briefs --account-name stbridge<unique>
-az storage container create -n channels --account-name stbridge<unique>
-```
+In the portal form:
 
-## 3. SAS token (one token, both containers)
+1. **Subscription** — pick the one with your founder credits.
+2. **Resource group** — click *Create new*, name it `rg-bridge`.
+3. **Region** — `Canada Central` (or wherever your credits live).
+4. Click **Review + create**, then **Create**. Wait ~3 minutes.
 
-```bash
-EXPIRY=$(date -u -d "+1 year" +%Y-%m-%dT%H:%MZ)
-SAS=$(az storage account generate-sas \
-  --account-name stbridge<unique> \
-  --permissions racwl \
-  --services b \
-  --resource-types co \
-  --expiry $EXPIRY -o tsv)
-echo "SAS starts with: ${SAS:0:8}..."
-```
+What it creates: storage account + `briefs`/`channels` containers, a container
+registry, the container app (with a placeholder page for now), a managed
+identity so the app reads storage with no passwords, and a second identity
+that lets GitHub deploy for you. All permissions are wired automatically.
 
-Permissions decoded: **r**ead **a**dd **c**reate **w**rite **l**ist on blobs and
-containers. No delete. One year expiry — rotate annually.
+## Step 2 — Copy the outputs (2 min)
 
-## 4. API key for the bridge
+1. In the portal, open your `rg-bridge` resource group → **Deployments** (left
+   menu) → click the deployment → **Outputs**.
+2. You'll see: `appUrl`, `apiKey`, `acrName`, `appName`, `resourceGroup`,
+   `subscriptionId`, `tenantId`, `deployerIdentityClientId`. Keep this tab open.
 
-```bash
-API_KEY=$(openssl rand -hex 32)
-echo $API_KEY   # save this somewhere safe
-```
+## Step 3 — Let GitHub ship the app (5 min, one time)
 
-## 5. Deploy the container app
+1. Open the repo on github.com → **Settings** → **Secrets and variables** →
+   **Actions**.
+2. Under **Secrets**, add: `AZURE_CLIENT_ID` (= deployerIdentityClientId),
+   `AZURE_TENANT_ID` (= tenantId), `AZURE_SUBSCRIPTION_ID` (= subscriptionId).
+3. Under **Variables**, add: `AZURE_ACR_NAME` (= acrName),
+   `AZURE_RESOURCE_GROUP` (= resourceGroup), `AZURE_APP_NAME` (= appName).
+4. Go to the **Actions** tab → **deploy-azure** → **Run workflow**.
+   It builds the Docker image inside Azure and rolls it out (~5 min).
+   After this, every push to `main` redeploys automatically.
 
-```bash
-az containerapp up \
-  --name claude-muse-bridge \
-  --resource-group rg-bridge \
-  --location canadacentral \
-  --source . \
-  --ingress external \
-  --target-port 8000
-```
+Open the `appUrl` in a browser — the placeholder is gone and the bridge is live.
 
-Then store the secrets and wire the env vars:
+## Step 4 — Connect Claude
 
-```bash
-az containerapp secret set \
-  --name claude-muse-bridge --resource-group rg-bridge \
-  --secrets apikey="$API_KEY" sas="$SAS"
+You need the `appUrl` and `apiKey` from the deployment outputs. The exact step
+depends on which Claude app you use:
 
-az containerapp update \
-  --name claude-muse-bridge --resource-group rg-bridge \
-  --set-env-vars \
-    BRIDGE_TRANSPORT=http \
-    BRIDGE_BACKEND=azure \
-    BRIDGE_API_KEY=secretref:apikey \
-    BRIDGE_STORAGE_ACCOUNT=stbridge<unique> \
-    BRIDGE_CONTAINER=briefs \
-    BRIDGE_CHANNELS_CONTAINER=channels \
-    BRIDGE_SAS_TOKEN=secretref:sas
-```
+- **Claude Code**: one `claude mcp add` command (Chitti can walk you through it).
+- **Claude Desktop**: add the server in the MCP settings with the URL + API key header.
 
-## 6. Get the public URL and smoke-test it
+Then in any Claude session: *"Join the `linkedin-strategy` channel on the
+bridge, introduce yourself, and read the latest brief."*
 
-```bash
-FQDN=$(az containerapp show -n claude-muse-bridge -g rg-bridge \
-  --query properties.configuration.ingress.fqdn -o tsv)
-echo "https://$FQDN/mcp"
+## Step 5 — Seed your first brief
 
-curl -s -X POST "https://$FQDN/mcp" \
-  -H "X-Api-Key: $API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"smoke","version":"0"}}}' \
-  | head -c 200
-```
-
-## 7. Seed your first brief
-
-```bash
-export BRIDGE_BACKEND=azure \
-  BRIDGE_STORAGE_ACCOUNT=stbridge<unique> \
-  BRIDGE_SAS_TOKEN="$SAS"
-
-python -m bridge.cli seal     # hash-seal local briefs
-python -m bridge.cli upload   # push briefs + sidecars to the briefs container
-```
-
-## 8. Connect Claude Code
-
-```bash
-claude mcp add --transport http bridge \
-  "https://$FQDN/mcp" \
-  --header "X-Api-Key: $API_KEY"
-```
-
-Then in any Claude session:
-
-> Join the `linkedin-strategy` channel on the bridge. Introduce yourself,
-> read the latest brief, and tell me what stands out.
-
-## 9. Pair a Muse chat (Chitti's side)
-
-Chitti uses the same HTTPS endpoint via the CLI:
-
-```bash
-export BRIDGE_BACKEND=azure BRIDGE_TRANSPORT=http \
-  BRIDGE_STORAGE_ACCOUNT=... BRIDGE_SAS_TOKEN=... \
-  BRIDGE_API_KEY=...
-# plus the bridge URL — CLI gains an --endpoint flag (roadmap); until then
-# Chitti polls via a small script on the same /mcp endpoint.
-```
-
-A watcher cron on Chitti's side checks the channel every few minutes and
-surfaces Claude's replies — set up once the deployment is live.
+For now, ask Chitti — the upload step runs from wherever the briefs live until
+a nicer producer flow exists. The seed brief (`linkedin-content-2026-09-28.md`)
+is sealed and ready.
 
 ## Costs
 
-Container Apps (scale to zero) + a few thousand blob operations a month:
-effectively free on founder credits. The expensive part would be high-frequency
-polling — keep watchers at 5+ minute intervals.
+Container Apps scales to zero when idle; a few thousand blob operations a
+month. Effectively free on founder credits.
+
+## How the pieces fit
+
+```
+GitHub repo ──push──> Actions ──build──> Container Registry ──deploy──> Container App
+                                                                              │
+                                                              managed identity│ (no passwords)
+                                                                              ▼
+                                                                    Blob Storage
+                                                              ┌──────────────────────┐
+                                                              │ briefs container    │
+                                                              │ channels container  │
+                                                              └──────────────────────┘
+                                                                              ▲
+Claude ──HTTPS + API key──> Container App (/mcp)                              │
+Chitti ──HTTPS + API key──> Container App (/mcp) ──reads/writes────────────────┘
+```

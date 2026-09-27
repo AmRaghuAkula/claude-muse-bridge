@@ -11,7 +11,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-azure = ["azure-storage-blob>=12"]
+azure = ["azure-storage-blob>=12", "azure-identity>=1"]
 
 [build-system]
 requires = ["setuptools>=61"]

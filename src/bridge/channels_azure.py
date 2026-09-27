@@ -3,32 +3,30 @@
 Append blobs are the right primitive here: every send is one atomic
 ``append_block`` call, so concurrent writers can't clobber each other the way
 a read-modify-write would.
+
+Auth: SAS token when provided, otherwise the managed identity of the host
+(e.g. the Container App's system-assigned identity).
 """
 
 from __future__ import annotations
 
+from .azure_auth import make_container_client
 from .channels import BaseChannelStore
 
 
 class AzureBlobChannelStore(BaseChannelStore):
-    def __init__(self, storage_account: str, container: str, sas_token: str) -> None:
-        try:
-            from azure.storage.blob import ContainerClient
-        except ImportError as exc:
-            raise RuntimeError(
-                "azure-storage-blob is not installed. Install with: pip install 'claude-muse-bridge[azure]'"
-            ) from exc
+    def __init__(
+        self, storage_account: str, container: str, sas_token: str = ""
+    ) -> None:
         try:
             from azure.core.exceptions import ResourceNotFoundError
         except ImportError as exc:
             raise RuntimeError(
-                "azure-core is not installed. Install with: pip install 'claude-muse-bridge[azure]'"
+                "azure-core is not installed. "
+                "Install with: pip install 'claude-muse-bridge[azure]'"
             ) from exc
         self._not_found = ResourceNotFoundError
-        sas = sas_token[1:] if sas_token.startswith("?") else sas_token
-        self._container = ContainerClient.from_container_url(
-            f"https://{storage_account}.blob.core.windows.net/{container}?{sas}"
-        )
+        self._container = make_container_client(storage_account, container, sas_token)
 
     def _blob(self, channel: str):
         return self._container.get_blob_client(f"{channel}.jsonl")

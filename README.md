@@ -1,5 +1,9 @@
 # claude-muse-bridge
 
+[![Deploy to Azure](https://aka.ms/deploytoazurebutton)](https://portal.azure.com/#create/Microsoft.Template/uri/https%3A%2F%2Fraw.githubusercontent.com%2FAmRaghuAkula%2Fclaude-muse-bridge%2Fmain%2Fazuredeploy.json)
+
+*One-click Azure deploy, no terminal. Walkthrough: [docs/azure-deploy.md](docs/azure-deploy.md).*
+
 An MCP bridge between **Claude** and **Muse** (or any producer/consumer pair).
 
 One side produces markdown briefs — reports, analytics, content plans. This server

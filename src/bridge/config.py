@@ -49,10 +49,10 @@ class Settings:
             raise ValueError(f"BRIDGE_TRANSPORT must be 'stdio' or 'http', got {self.transport!r}")
         if self.transport == "http" and not self.api_key:
             raise ValueError("BRIDGE_API_KEY is required when BRIDGE_TRANSPORT=http")
-        if self.backend == "azure" and not (self.storage_account and self.sas_token):
+        if self.backend == "azure" and not self.storage_account:
             raise ValueError(
-                "BRIDGE_STORAGE_ACCOUNT and BRIDGE_SAS_TOKEN are required "
-                "when BRIDGE_BACKEND=azure"
+                "BRIDGE_STORAGE_ACCOUNT is required when BRIDGE_BACKEND=azure "
+                "(SAS token optional: falls back to managed identity)"
             )
 
 
