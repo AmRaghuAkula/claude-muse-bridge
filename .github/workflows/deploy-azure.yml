@@ -195,6 +195,7 @@ jobs:
             if ! az containerapp job update --name bridge-watcher \
               --resource-group "$RG" \
               --image "$IMAGE" \
+              --cron-expression "*/5 * * * *" \
               --set-env-vars $ENV_VARS \
               2>/tmp/job_err.txt; then
               echo "::error::bridge-watcher job update failed: $(cat /tmp/job_err.txt)"
@@ -209,7 +210,7 @@ jobs:
               --resource-group "$RG" \
               --environment "$ENV_ID" \
               --trigger-type Schedule \
-              --cron-expression "*/15 * * * *" \
+              --cron-expression "*/5 * * * *" \
               --replica-timeout 600 \
               --replica-retry-limit 1 \
               --image "$IMAGE" \
