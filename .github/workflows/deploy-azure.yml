@@ -113,11 +113,14 @@ jobs:
             --resource-group "$RG" --location "$LOCATION" --query id -o tsv)
           PRINCIPAL=$(az identity show --ids "$IDENTITY_ID" \
             --query principalId -o tsv)
+          WATCHER_CLIENT_ID=$(az identity show --ids "$IDENTITY_ID" \
+            --query clientId -o tsv)
           STORAGE_ID=$(az storage account show --name "$STORAGE" \
             --resource-group "$RG" --query id -o tsv)
           ACR_ID=$(az acr show --name "$ACR" \
             --resource-group "$RG" --query id -o tsv)
           [ -n "$IDENTITY_ID" ] && [ -n "$PRINCIPAL" ] \
+            && [ -n "$WATCHER_CLIENT_ID" ] \
             && [ -n "$STORAGE_ID" ] && [ -n "$ACR_ID" ] \
             || { echo "Failed to resolve Azure resource IDs" >&2; exit 1; }
           # Role assignments can race Azure AD replication right after the
@@ -167,6 +170,11 @@ jobs:
           BEDROCK_MODEL="${BEDROCK_MODEL:-global.anthropic.claude-sonnet-4-6}"
 
           ENV_VARS="BRIDGE_BACKEND=azure"
+          # The watcher job has a USER-assigned identity only (system-assigned
+          # is Off), so DefaultAzureCredential must be told which identity to
+          # use — without AZURE_CLIENT_ID it fails with "(invalid_scope)
+          # Unable to load the proper Managed Identity" before touching Blob.
+          ENV_VARS="$ENV_VARS AZURE_CLIENT_ID=$WATCHER_CLIENT_ID"
           ENV_VARS="$ENV_VARS BRIDGE_MODE=watcher"
           ENV_VARS="$ENV_VARS BRIDGE_STORAGE_ACCOUNT=$STORAGE"
           ENV_VARS="$ENV_VARS BRIDGE_CHANNELS_CONTAINER=channels"
