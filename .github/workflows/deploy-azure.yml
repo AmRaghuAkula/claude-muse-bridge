@@ -181,13 +181,13 @@ jobs:
           if az containerapp job show --name bridge-watcher \
               --resource-group "$RG" >/dev/null 2>&1; then
             echo "Updating existing bridge-watcher job..."
+            # NOTE: 'job update' has no --set-secrets flag (create does); the
+            # AWS secrets set at create time persist across updates, and the
+            # env vars above only reference them via secretref.
             if ! az containerapp job update --name bridge-watcher \
               --resource-group "$RG" \
               --image "$IMAGE" \
               --set-env-vars $ENV_VARS \
-              --set-secrets \
-                "aws-access-key-id=${{ secrets.AWS_ACCESS_KEY_ID }}" \
-                "aws-secret-access-key=${{ secrets.AWS_SECRET_ACCESS_KEY }}" \
               2>/tmp/job_err.txt; then
               echo "::error::bridge-watcher job update failed: $(cat /tmp/job_err.txt)"
               exit 1
