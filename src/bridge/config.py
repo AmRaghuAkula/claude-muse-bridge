@@ -41,6 +41,9 @@ class Settings:
         default_factory=lambda: Path.home() / "bridge-channels"
     )
     channels_container: str = "channels"  # message channels (azure backend)
+    allowed_hosts: list[str] = field(  # BRIDGE_ALLOWED_HOSTS (comma-separated)
+        default_factory=list
+    )
 
     def validate(self) -> None:
         if self.backend not in ("local", "azure"):
@@ -70,4 +73,9 @@ def load_settings() -> Settings:
         port=int(os.environ.get("BRIDGE_PORT", "8000")),
         channels_dir=Path(os.environ.get("BRIDGE_CHANNELS_DIR", "~/bridge-channels")).expanduser(),
         channels_container=os.environ.get("BRIDGE_CHANNELS_CONTAINER", "channels").strip(),
+        allowed_hosts=[
+            h.strip()
+            for h in os.environ.get("BRIDGE_ALLOWED_HOSTS", "").split(",")
+            if h.strip()
+        ],
     )

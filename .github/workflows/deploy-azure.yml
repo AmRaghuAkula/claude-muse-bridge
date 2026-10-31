@@ -68,10 +68,19 @@ jobs:
         run: |
           LOGIN_SERVER=$(az acr show --name ${{ secrets.AZURE_ACR_NAME }} \
             --query loginServer -o tsv)
+          # The server rejects any Host header outside BRIDGE_ALLOWED_HOSTS
+          # (MCP SDK DNS-rebinding protection, HTTP 421). Set it to the app's
+          # own FQDN so Claude Desktop sessions survive; --set-env-vars merges
+          # on update, leaving the other BRIDGE_* vars untouched.
+          FQDN=$(az containerapp show \
+            --name claude-muse-bridge \
+            --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
+            --query properties.configuration.ingress.fqdn -o tsv)
           az containerapp update \
             --name claude-muse-bridge \
             --resource-group ${{ secrets.AZURE_RESOURCE_GROUP }} \
-            --image "$LOGIN_SERVER/bridge:${{ github.sha }}"
+            --image "$LOGIN_SERVER/bridge:${{ github.sha }}" \
+            --set-env-vars "BRIDGE_ALLOWED_HOSTS=$FQDN"
 
       - name: Deploy watcher job
         # Scheduled Container Apps Job that nudges Claude (via Bedrock) when

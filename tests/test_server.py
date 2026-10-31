@@ -94,3 +94,21 @@ def test_channel_tools_roundtrip(tmp_path):
     # invalid channel rejected, not a crash
     assert "error" in _call(server, "send_message",
                              {"channel": "../x", "author": "a", "text": "hi"})
+
+
+def test_allowed_hosts_parsed_from_env(monkeypatch, tmp_path):
+    from bridge.config import load_settings
+
+    monkeypatch.setenv(
+        "BRIDGE_ALLOWED_HOSTS", " example.com , app.azurecontainerapps.io "
+    )
+    monkeypatch.chdir(tmp_path)  # avoid picking up a stray .env from cwd
+    assert load_settings().allowed_hosts == ["example.com", "app.azurecontainerapps.io"]
+
+
+def test_allowed_hosts_defaults_to_empty(monkeypatch, tmp_path):
+    from bridge.config import load_settings
+
+    monkeypatch.delenv("BRIDGE_ALLOWED_HOSTS", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert load_settings().allowed_hosts == []

@@ -22,6 +22,7 @@ import sys
 
 import uvicorn
 from mcp.server.mcpserver import MCPServer
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
@@ -155,7 +156,18 @@ def main(argv: list[str] | None = None) -> None:
     if settings.transport == "stdio":
         server.run(transport="stdio")
     else:
-        app = server.streamable_http_app()
+        # DNS-rebinding protection: the MCP SDK auto-enables it when binding
+        # localhost, but its allowlist covers loopback hosts only. On Azure the
+        # Host header carries the Container App FQDN, which fails validation
+        # (HTTP 421) and kills the session. Pass our own allowlist instead,
+        # from BRIDGE_ALLOWED_HOSTS; when unset, keep the localhost default.
+        app = server.streamable_http_app(
+            transport_security=TransportSecuritySettings(
+                enable_dns_rebinding_protection=True,
+                allowed_hosts=settings.allowed_hosts
+                or ["127.0.0.1:*", "localhost:*", "[::1]:*"],
+            )
+        )
         app.add_middleware(_ApiKeyMiddleware, api_key=settings.api_key)
         print(
             f"Serving MCP on http://{settings.host}:{settings.port}/mcp "

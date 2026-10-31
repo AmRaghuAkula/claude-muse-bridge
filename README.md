@@ -99,6 +99,7 @@ CLI flags (`--transport`, `--backend`, `--briefs-dir`, `--port`) override env va
 | `BRIDGE_PORT` | `8000` | HTTP port |
 | `BRIDGE_CHANNELS_DIR` | `~/bridge-channels` | Folder holding channel message files (local backend) |
 | `BRIDGE_CHANNELS_CONTAINER` | `channels` | Blob container for channels (azure backend) |
+| `BRIDGE_ALLOWED_HOSTS` | — | Comma-separated Host-header allowlist for the `http` transport (DNS-rebinding protection). Set it to the Container App FQDN when hosted; defaults to localhost variants when unset. |
 
 ## Hosted on Azure (always-on)
 
